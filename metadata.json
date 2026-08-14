@@ -1,0 +1,6 @@
+{
+  "name": "What The Park",
+  "description": "Simple and driver-friendly Singapore carpark finder with live availability, rates, map view, and direct turn-by-turn navigation.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
