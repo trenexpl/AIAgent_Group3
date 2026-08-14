@@ -12,7 +12,8 @@ import { SINGAPORE_CARPARKS } from './data/singaporeCarparks';
 import { 
   getCarparksNearDestination, 
   filterAndSortCarparks, 
-  formatDistance 
+  formatDistance,
+  fetchLiveLtaCarparks 
 } from './services/parkingService';
 import { storageService } from './services/storageService';
 
@@ -114,12 +115,30 @@ export default function App() {
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [alertNotificationBanner, setAlertNotificationBanner] = useState<string | null>(null);
 
-  // Load initial persistent storage
+  // Load initial persistent storage & fetch live LTA backend carparks
   useEffect(() => {
     setSavedCarparks(storageService.getSavedCarparks());
     setRecentSearches(storageService.getRecentSearches());
     setAlerts(storageService.getAlerts());
+
+    // Fetch initial live carparks from backend
+    loadLiveLtaData();
   }, []);
+
+  const loadLiveLtaData = async (force = false) => {
+    setIsRefreshingData(true);
+    try {
+      const result = await fetchLiveLtaCarparks({ force });
+      if (result && result.carparks.length > 0) {
+        setCarparkPool(result.carparks);
+        setLastRefreshedTime(result.lastUpdated || 'Just now');
+      }
+    } catch (err) {
+      console.warn('Backend live fetch warning, using existing pool:', err);
+    } finally {
+      setIsRefreshingData(false);
+    }
+  };
 
   // Compute carparks near destination
   const nearbyCarparks = useMemo(() => {
@@ -127,7 +146,7 @@ export default function App() {
       activeDestination.latitude,
       activeDestination.longitude,
       carparkPool,
-      4000
+      4500
     );
   }, [activeDestination, carparkPool]);
 
@@ -145,49 +164,18 @@ export default function App() {
     );
   }, [filteredCarparks]);
 
-  // Periodic simulated live occupancy update (simulates live LTA/URA telemetry feed updates)
+  // Periodic live occupancy sync from backend (every 30s)
   useEffect(() => {
     const interval = setInterval(() => {
-      setCarparkPool((prevPool) => {
-        return prevPool.map((cp) => {
-          const lotDelta = Math.floor(Math.random() * 7) - 3;
-          const newAvail = Math.max(0, Math.min(cp.totalLots, cp.availableLots + lotDelta));
-          const newOccupancy = Math.round(((cp.totalLots - newAvail) / cp.totalLots) * 100);
-
-          const matchedAlert = alerts.find((a) => a.carparkId === cp.id && a.active);
-          if (matchedAlert) {
-            if (
-              (matchedAlert.triggerWhen === 'above_occupancy' && newOccupancy >= matchedAlert.thresholdPercent) ||
-              (matchedAlert.triggerWhen === 'below_lots' && newAvail <= (matchedAlert.thresholdLots || 20))
-            ) {
-              setAlertNotificationBanner(
-                `🚨 Alert: ${cp.name} is now ${newOccupancy}% occupied (${newAvail} lots left)!`
-              );
-            }
-          }
-
-          return {
-            ...cp,
-            availableLots: newAvail,
-            occupancyRate: newOccupancy,
-            lastUpdated: 'Just now',
-          };
-        });
-      });
-      setLastRefreshedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    }, 28000);
+      loadLiveLtaData(false);
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [alerts]);
 
   // Manual refresh trigger
   const handleManualRefresh = () => {
-    setIsRefreshingData(true);
-    setTimeout(() => {
-      setCarparkPool((prev) => [...prev]);
-      setLastRefreshedTime('Just now');
-      setIsRefreshingData(false);
-    }, 400);
+    loadLiveLtaData(true);
   };
 
   // Search Destination handler -> Immediately goes to Map Page with available carparks & rates!

@@ -259,3 +259,54 @@ export function getNavigationLinks(carpark: Carpark, destName?: string) {
     onemap: `https://www.onemap.gov.sg/main/v2/?lat=${lat}&lng=${lng}`,
   };
 }
+
+/**
+ * Fetches live Singapore carparks from backend proxy (LTA + URA + HDB DataMall).
+ */
+export async function fetchLiveLtaCarparks(options?: {
+  lat?: number;
+  lng?: number;
+  radius?: number;
+  force?: boolean;
+}): Promise<{ carparks: Carpark[]; lastUpdated: string; total: number } | null> {
+  try {
+    const params = new URLSearchParams();
+    if (options?.lat !== undefined) params.append('lat', options.lat.toString());
+    if (options?.lng !== undefined) params.append('lng', options.lng.toString());
+    if (options?.radius !== undefined) params.append('radius', options.radius.toString());
+    if (options?.force) params.append('force', 'true');
+
+    const res = await fetch(`/api/carparks/live?${params.toString()}`);
+    if (!res.ok) {
+      throw new Error(`Backend responded with status ${res.status}`);
+    }
+
+    const data = await res.json();
+    if (data.success && Array.isArray(data.carparks) && data.carparks.length > 0) {
+      return {
+        carparks: data.carparks,
+        lastUpdated: data.lastUpdated || 'Just now',
+        total: data.total || data.carparks.length,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.warn('[ParkingService] Could not fetch live LTA backend data, falling back to local dataset:', error);
+    return null;
+  }
+}
+
+/**
+ * Fetches quick availability status map from backend.
+ */
+export async function fetchLiveAvailabilityMap(): Promise<Record<string, { availableLots: number; occupancyRate: number }> | null> {
+  try {
+    const res = await fetch('/api/carparks/availability');
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.availability || null;
+  } catch (error) {
+    return null;
+  }
+}
+
